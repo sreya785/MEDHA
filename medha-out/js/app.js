@@ -205,20 +205,41 @@ const App = {
 
     const aiInput = DNA.getAIInput(App.dnaGroups);
 
-    try {
-      const response = await fetch('/generate-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dnaReport: aiInput })
-      });
-      if (!response.ok) throw new Error('Server error: ' + response.status);
-      const data = await response.json();
-      document.getElementById('notesLoading').style.display = 'none';
-      Notes.render(data.notes);
-      App.notesGenerated = true;
-    } catch (err) {
-      document.getElementById('notesLoading').style.display = 'none';
-      Notes.renderError(err.message);
+    const maxAttempts = 3;
+    const delayMs = 5000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // Update retry status for user on subsequent attempts
+        if (attempt > 1) {
+          const msgEl = document.getElementById('notesLoadingMsg');
+          if (msgEl) msgEl.textContent = `আবার চেষ্টা করা হচ্ছে... (${attempt}/${maxAttempts})`;
+        }
+
+        const response = await fetch('/generate-notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dnaReport: aiInput })
+        });
+
+        if (!response.ok) throw new Error('Server error: ' + response.status);
+        const data = await response.json();
+
+        document.getElementById('notesLoading').style.display = 'none';
+        Notes.render(data.notes);
+        App.notesGenerated = true;
+        return;
+      } catch (err) {
+        if (attempt < maxAttempts) {
+          // wait before retrying
+          await new Promise(res => setTimeout(res, delayMs));
+          continue;
+        }
+        // all attempts failed
+        document.getElementById('notesLoading').style.display = 'none';
+        Notes.renderError(err.message || String(err));
+        return;
+      }
     }
   }
 };
